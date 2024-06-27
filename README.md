@@ -91,3 +91,37 @@ void loop() {
     delay(500);
 }
 ```
+
+The MPU6050 accelerometer can measure acceleration in different ranges: ±2g, ±4g, ±8g, and ±16g. These ranges represent the maximum acceleration values the sensor can measure in each axis (X, Y, Z) in terms of gravitational acceleration (g). Here's a breakdown of the differences and their impact on the readings:
+
+Range Selection:
+
+2g: The sensor can measure accelerations from -2g to +2g.
+4g: The sensor can measure accelerations from -4g to +4g.
+8g: The sensor can measure accelerations from -8g to +8g.
+16g: The sensor can measure accelerations from -16g to +16g.
+Resolution and Sensitivity:
+
+The resolution (or sensitivity) of the accelerometer is determined by the range selected. Lower ranges (like 2g) provide higher sensitivity and finer resolution, meaning small changes in acceleration are more noticeable. Higher ranges (like 16g) provide lower sensitivity and coarser resolution, meaning the sensor can measure larger accelerations but with less detail in smaller changes.
+For example, in the 2g range, the sensor can detect smaller movements and vibrations with higher precision. In the 16g range, the sensor can measure more significant accelerations, which might be useful in high-impact scenarios but with less detail for small changes.
+Mapping to Joystick Range:
+
+When mapping the sensor's raw data to a joystick's range, the factor used in the map function changes depending on the selected range.
+In the code provided, this factor helps convert the sensor's readings to a range suitable for the joystick inputs. The mapping factor ensures that the full range of the sensor's output is utilized correctly.
+Here are the specifics for each range:
+
+2g Range:
+
+Factor: 16384 (since 1g = 16384 LSBs (Least Significant Bits))
+Example: For a ±2g range, the raw accelerometer value of 1g will be 16384, and -1g will be -16384.
+High sensitivity, suitable for detecting small movements.
+8g Range:
+
+Factor: 4096 (since 1g = 4096 LSBs)
+Example: For a ±8g range, the raw accelerometer value of 1g will be 4096, and -1g will be -4096.
+Moderate sensitivity, suitable for more significant movements but still maintaining a good level of detail.
+16g Range:
+
+Factor: 2048 (since 1g = 2048 LSBs)
+Example: For a ±16g range, the raw accelerometer value of 1g will be 2048, and -1g will be -2048.
+Lower sensitivity, suitable for detecting very high accelerations but with less detail on small changes.
