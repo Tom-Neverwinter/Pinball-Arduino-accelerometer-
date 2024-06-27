@@ -35,7 +35,7 @@ void setup() {
     Serial.println("MPU6050 Found!");
 
     // Set accelerometer and gyro range
-    mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
+    mpu.setAccelerometerRange(MPU6050_RANGE_4_G);
     mpu.setGyroRange(MPU6050_RANGE_250_DEG);
 
     // Initialize Joystick
@@ -61,9 +61,9 @@ void loop() {
     Serial.print(" Z: "); Serial.println(g.gyro.z);
 
     // Map accelerometer values to joystick ranges
-    int16_t x = map(constrain(a.acceleration.x * 2048, -32768, 32767), -32768, 32767, -1023, 1023);
-    int16_t y = map(constrain(a.acceleration.y * 2048, -32768, 32767), -32768, 32767, -1023, 1023);
-    int16_t z = map(constrain(a.acceleration.z * 2048, -32768, 32767), -32768, 32767, -1023, 1023);
+    int16_t x = map(constrain(a.acceleration.x * 8192, -32768, 32767), -32768, 32767, -1023, 1023);
+    int16_t y = map(constrain(a.acceleration.y * 8192, -32768, 32767), -32768, 32767, -1023, 1023);
+    int16_t z = map(constrain(a.acceleration.z * 8192, -32768, 32767), -32768, 32767, -1023, 1023);
 
     // Map gyroscope values to joystick ranges
     int16_t rx = map(constrain(g.gyro.x * 131, -32768, 32767), -32768, 32767, -1023, 1023);
