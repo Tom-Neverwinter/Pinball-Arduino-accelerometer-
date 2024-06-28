@@ -99,6 +99,22 @@ void loop() {
 }
 ```
 
+ Configure the Joystick in Windows
+Open the Game Controllers Settings:
+
+Press Win + R to open the Run dialog.
+Type joy.cpl and press Enter.
+Verify the Joystick:
+
+In the Game Controllers window, you should see the Arduino listed as a joystick.
+Select it and click Properties.
+Test the Joystick:
+
+In the Test tab, you can see the axes and buttons.
+Move the MPU6050 to see the corresponding axes move in the Properties window. This verifies that the joystick is working correctly.
+
+==========================================================================================================================================
+
 The MPU6050 accelerometer can measure acceleration in different ranges: ±2g, ±4g, ±8g, and ±16g. These ranges represent the maximum acceleration values the sensor can measure in each axis (X, Y, Z) in terms of gravitational acceleration (g). Here's a breakdown of the differences and their impact on the readings:
 
 Range Selection:
