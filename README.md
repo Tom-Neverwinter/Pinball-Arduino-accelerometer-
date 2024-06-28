@@ -4,6 +4,13 @@ easy Pinball Arduino accelerometer
 GY-87 accelerometer
 pro micro Arduino 
 
+Connect the MPU6050 to the Arduino:
+
+VCC to 5V on the Arduino.
+GND to GND on the Arduino.
+SCL to A5 on the Arduino (or the appropriate I2C clock pin on your specific Arduino model).
+SDA to A4 on the Arduino (or the appropriate I2C data pin on your specific Arduino model).
+
 ```
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
