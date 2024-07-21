@@ -102,10 +102,6 @@ void loop() {
     delay(500);
 }
 ```
-install https://github.com/Cleric-K/vJoySerialFeeder
-
-so we can pick and switch our axis
-Keep z on atlegends for our plunger and change our x/y for sweet sweet tilt action
 
  Configure the Joystick in Windows
 Open the Game Controllers Settings:
