@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <math.h>
 
 // --- Sensor Addresses ---
 #define MPU6050_ADDRESS 0x68
@@ -10,25 +11,22 @@
 Adafruit_MPU6050 mpu;
 
 // --- Calibration Data (Accelerometer) ---
-int16_t accelXCalibOffset = 0; // Initialize to 0, calibration will set this
-int16_t accelYCalibOffset = 0; // Initialize to 0, calibration will set this
 float accelXZeroG = 0;
 float accelYZeroG = 0;
 
 // --- Constants ---
-#define ACCEL_READ_DELAY_MS 5      // Delay between accelerometer readings
-#define ACCEL_TILT_SENSITIVITY 2.0f // Adjust this for overall sensitivity (lower = more sensitive)
-#define JOYSTICK_SCALING_FACTOR 1.0f // Scaling factor for joystick output (0.0-1.0)
-#define DEADZONE 0.1f // Deadzone for the accelerometer readings
+#define ACCEL_READ_DELAY_MS 5
+#define DEADZONE 0.05f      // Deadzone percentage (0.0 - 1.0)
+#define TILT_RANGE 45.0f // Maximum tilt angle in degrees
 
 // --- Global Variables ---
-float rawAccelX, rawAccelY, rawAccelZ; // Raw accelerometer values
+float rawAccelX, rawAccelY, rawAccelZ;
 float filteredAccelX, filteredAccelY;
 
 // --- Joystick ---
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID, JOYSTICK_TYPE_GAMEPAD,
-                  0, 0, // 0 buttons, no hat switch
-                  true, true, false, false, false, false, // X and Y axes enabled
+                  0, 0,
+                  true, true, false, false, false, false,
                   false, false, false, false, false);
 
 // --- Function Prototypes ---
@@ -42,21 +40,17 @@ void setup() {
   Serial.begin(115200);
   Wire.begin();
 
-  // Initialize MPU6050
   if (mpu.begin(MPU6050_ADDRESS)) {
     Serial.println("MPU6050 Found!");
     mpu.setAccelerometerRange(MPU6050_RANGE_4_G);
     mpu.setGyroRange(MPU6050_RANGE_500_DEG);
     mpu.setFilterBandwidth(MPU6050_BAND_44_HZ);
-
-    // Calibrate Accelerometer
     calibrateAccelerometer();
   } else {
     Serial.println("MPU6050 Not Found!");
     while (1);
   }
 
-  // Initialize Joystick
   Joystick.begin();
   Joystick.setXAxisRange(-1023, 1023);
   Joystick.setYAxisRange(-1023, 1023);
@@ -65,16 +59,14 @@ void setup() {
 void loop() {
   readAccelerometer();
   handleTilt();
-
   delay(ACCEL_READ_DELAY_MS);
 }
 
-// --- Calibration Function ---
 void calibrateAccelerometer() {
   Serial.println("Calibrating accelerometer... Keep the device still.");
-  delay(3000); // Give more time to stabilize
+  delay(3000);
 
-  const int calibrationSamples = 500; // Increase samples for better accuracy
+  const int calibrationSamples = 500;
   float sumX = 0;
   float sumY = 0;
 
@@ -95,7 +87,6 @@ void calibrateAccelerometer() {
   Serial.println(accelYZeroG);
 }
 
-// --- Sensor Reading Function ---
 void readAccelerometer() {
   sensors_event_t accel, gyro, temp;
   mpu.getEvent(&accel, &gyro, &temp);
@@ -104,50 +95,41 @@ void readAccelerometer() {
   rawAccelY = accel.acceleration.y - accelYZeroG;
   rawAccelZ = accel.acceleration.z;
 
-  // Apply Low-Pass Filter
-  float alpha = 0.2; // Adjust for smoothing (0.0-1.0, lower = more smoothing)
+  float alpha = 0.2;
   filteredAccelX = lowPassFilter(rawAccelX, filteredAccelX, alpha);
   filteredAccelY = lowPassFilter(rawAccelY, filteredAccelY, alpha);
 }
 
-// --- Tilt Handling ---
 void handleTilt() {
-  float joystickX = filteredAccelX / ACCEL_TILT_SENSITIVITY;
-  float joystickY = filteredAccelY / ACCEL_TILT_SENSITIVITY;
+  // Calculate tilt angles (in degrees)
+  float tiltX = atan2(filteredAccelY, rawAccelZ) * RAD_TO_DEG; // Tilt around X-axis (side-to-side in YOUR orientation)
+  float tiltY = atan2(filteredAccelX, rawAccelZ) * RAD_TO_DEG; // Tilt around Y-axis (forward/backward in YOUR orientation)
 
-    // Apply Deadzone
-  if (abs(joystickX) < DEADZONE) joystickX = 0;
-  if (abs(joystickY) < DEADZONE) joystickY = 0;
+  // ***CORRECTED AXIS MAPPING FOR YOUR ORIENTATION***
+  float joystickX = map(tiltX, -TILT_RANGE, TILT_RANGE, 1023, -1023); // Side-to-side -> Joystick X (INVERTED)
+  float joystickY = map(tiltY, -TILT_RANGE, TILT_RANGE, -1023, 1023);   // Forward/backward -> Joystick Y
 
-  // Apply custom mapping for finer control
-  joystickX = customMap(joystickX, -1, 1, -1023, 1023);
-  joystickY = customMap(joystickY, -1, 1, -1023, 1023);
+  // Apply Deadzone (scaled to joystick range)
+  if (abs(joystickX) < DEADZONE * 1023) joystickX = 0;
+  if (abs(joystickY) < DEADZONE * 1023) joystickY = 0;
 
-  // Scale down joystick values
-  joystickX = joystickX * JOYSTICK_SCALING_FACTOR;
-  joystickY = joystickY * JOYSTICK_SCALING_FACTOR;
+    joystickX = customMap(joystickX, -1023, 1023, -1023, 1023);
+    joystickY = customMap(joystickY, -1023, 1023, -1023, 1023);
 
-  // Invert Y-axis (if needed) - Often needed for pinball
-  joystickY = -joystickY;
+  joystickY = -joystickY; // Invert Y-axis (still important for pinball "up" being negative joystick Y)
 
-  // Clamp joystick values to the valid range
   joystickX = constrain(joystickX, -1023, 1023);
   joystickY = constrain(joystickY, -1023, 1023);
 
-  // Update joystick axes
   Joystick.setXAxis(joystickX);
   Joystick.setYAxis(joystickY);
-
-  // Send joystick report
   Joystick.sendState();
 
-  // Serial output for debugging
-  Serial.print("Raw Accel X: "); Serial.print(rawAccelX); Serial.print(" Filtered X: "); Serial.print(filteredAccelX);
-  Serial.print(" Raw Accel Y: "); Serial.print(rawAccelY); Serial.print(" Filtered Y: "); Serial.print(filteredAccelY);
+  Serial.print("Raw Accel X: "); Serial.print(rawAccelX); Serial.print(" Filtered X: "); Serial.print(filteredAccelX); Serial.print(" Tilt X: "); Serial.print(tiltX);
+  Serial.print(" Raw Accel Y: "); Serial.print(rawAccelY); Serial.print(" Filtered Y: "); Serial.print(filteredAccelY); Serial.print(" Tilt Y: "); Serial.print(tiltY);
   Serial.print(" Joystick X: "); Serial.print(joystickX); Serial.print(" Joystick Y: "); Serial.println(joystickY);
 }
 
-// --- Custom Mapping Function --- (unchanged)
 float customMap(float x, float in_min, float in_max, float out_min, float out_max) {
   x = constrain(x, in_min, in_max);
   float normalized = (x - in_min) / (in_max - in_min);
@@ -160,7 +142,6 @@ float customMap(float x, float in_min, float in_max, float out_min, float out_ma
   return out_min + mapped * (out_max - out_min);
 }
 
-// --- Low-Pass Filter Function ---
 float lowPassFilter(float newValue, float previousValue, float alpha) {
   return previousValue + alpha * (newValue - previousValue);
 }
