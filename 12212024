@@ -1,0 +1,147 @@
+#include <Joystick.h>
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <math.h>
+
+// --- Sensor Addresses ---
+#define MPU6050_ADDRESS 0x68
+
+// --- Sensor Objects ---
+Adafruit_MPU6050 mpu;
+
+// --- Calibration Data (Accelerometer) ---
+float accelXZeroG = 0;
+float accelYZeroG = 0;
+
+// --- Constants ---
+#define ACCEL_READ_DELAY_MS 5
+#define DEADZONE 0.05f      // Deadzone percentage (0.0 - 1.0)
+#define TILT_RANGE 45.0f // Maximum tilt angle in degrees
+
+// --- Global Variables ---
+float rawAccelX, rawAccelY, rawAccelZ;
+float filteredAccelX, filteredAccelY;
+
+// --- Joystick ---
+Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID, JOYSTICK_TYPE_GAMEPAD,
+                  0, 0,
+                  true, true, false, false, false, false,
+                  false, false, false, false, false);
+
+// --- Function Prototypes ---
+void calibrateAccelerometer();
+void readAccelerometer();
+void handleTilt();
+float customMap(float x, float in_min, float in_max, float out_min, float out_max);
+float lowPassFilter(float newValue, float previousValue, float alpha);
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  if (mpu.begin(MPU6050_ADDRESS)) {
+    Serial.println("MPU6050 Found!");
+    mpu.setAccelerometerRange(MPU6050_RANGE_4_G);
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    mpu.setFilterBandwidth(MPU6050_BAND_44_HZ);
+    calibrateAccelerometer();
+  } else {
+    Serial.println("MPU6050 Not Found!");
+    while (1);
+  }
+
+  Joystick.begin();
+  Joystick.setXAxisRange(-1023, 1023);
+  Joystick.setYAxisRange(-1023, 1023);
+}
+
+void loop() {
+  readAccelerometer();
+  handleTilt();
+  delay(ACCEL_READ_DELAY_MS);
+}
+
+void calibrateAccelerometer() {
+  Serial.println("Calibrating accelerometer... Keep the device still.");
+  delay(3000);
+
+  const int calibrationSamples = 500;
+  float sumX = 0;
+  float sumY = 0;
+
+  for (int i = 0; i < calibrationSamples; i++) {
+    sensors_event_t accel, gyro, temp;
+    mpu.getEvent(&accel, &gyro, &temp);
+    sumX += accel.acceleration.x;
+    sumY += accel.acceleration.y;
+    delay(5);
+  }
+
+  accelXZeroG = sumX / calibrationSamples;
+  accelYZeroG = sumY / calibrationSamples;
+
+  Serial.print("Calibration complete. Zero G: X=");
+  Serial.print(accelXZeroG);
+  Serial.print(", Y=");
+  Serial.println(accelYZeroG);
+}
+
+void readAccelerometer() {
+  sensors_event_t accel, gyro, temp;
+  mpu.getEvent(&accel, &gyro, &temp);
+
+  rawAccelX = accel.acceleration.x - accelXZeroG;
+  rawAccelY = accel.acceleration.y - accelYZeroG;
+  rawAccelZ = accel.acceleration.z;
+
+  float alpha = 0.2;
+  filteredAccelX = lowPassFilter(rawAccelX, filteredAccelX, alpha);
+  filteredAccelY = lowPassFilter(rawAccelY, filteredAccelY, alpha);
+}
+
+void handleTilt() {
+  // Calculate tilt angles (in degrees)
+  float tiltX = atan2(filteredAccelY, rawAccelZ) * RAD_TO_DEG; // Tilt around X-axis (side-to-side in YOUR orientation)
+  float tiltY = atan2(filteredAccelX, rawAccelZ) * RAD_TO_DEG; // Tilt around Y-axis (forward/backward in YOUR orientation)
+
+  // ***CORRECTED AXIS MAPPING FOR YOUR ORIENTATION***
+  float joystickX = map(tiltX, -TILT_RANGE, TILT_RANGE, 1023, -1023); // Side-to-side -> Joystick X (INVERTED)
+  float joystickY = map(tiltY, -TILT_RANGE, TILT_RANGE, -1023, 1023);   // Forward/backward -> Joystick Y
+
+  // Apply Deadzone (scaled to joystick range)
+  if (abs(joystickX) < DEADZONE * 1023) joystickX = 0;
+  if (abs(joystickY) < DEADZONE * 1023) joystickY = 0;
+
+    joystickX = customMap(joystickX, -1023, 1023, -1023, 1023);
+    joystickY = customMap(joystickY, -1023, 1023, -1023, 1023);
+
+  joystickY = -joystickY; // Invert Y-axis (still important for pinball "up" being negative joystick Y)
+
+  joystickX = constrain(joystickX, -1023, 1023);
+  joystickY = constrain(joystickY, -1023, 1023);
+
+  Joystick.setXAxis(joystickX);
+  Joystick.setYAxis(joystickY);
+  Joystick.sendState();
+
+  Serial.print("Raw Accel X: "); Serial.print(rawAccelX); Serial.print(" Filtered X: "); Serial.print(filteredAccelX); Serial.print(" Tilt X: "); Serial.print(tiltX);
+  Serial.print(" Raw Accel Y: "); Serial.print(rawAccelY); Serial.print(" Filtered Y: "); Serial.print(filteredAccelY); Serial.print(" Tilt Y: "); Serial.print(tiltY);
+  Serial.print(" Joystick X: "); Serial.print(joystickX); Serial.print(" Joystick Y: "); Serial.println(joystickY);
+}
+
+float customMap(float x, float in_min, float in_max, float out_min, float out_max) {
+  x = constrain(x, in_min, in_max);
+  float normalized = (x - in_min) / (in_max - in_min);
+  float mapped;
+  if (normalized >= 0) {
+    mapped = pow(normalized, 3);
+  } else {
+    mapped = -pow(-normalized, 3);
+  }
+  return out_min + mapped * (out_max - out_min);
+}
+
+float lowPassFilter(float newValue, float previousValue, float alpha) {
+  return previousValue + alpha * (newValue - previousValue);
+}

@@ -1,154 +1,38 @@
-# Pinball-Arduino-accelerometer-
-easy Pinball Arduino accelerometer 
+# Arduino-Based Accelerometer Pinball Controller
 
-GY-87 accelerometer
-pro micro Arduino 
+This project uses an Arduino Leonardo (or compatible ATmega32U4-based board) and an MPU-6050 accelerometer to create a USB joystick controller for virtual pinball software like Visual Pinball X (VPX) and Future Pinball. The accelerometer translates the tilt of the device into joystick X and Y axis movements, providing a realistic way to nudge and control the virtual pinball table.
 
-Connect the MPU6050 to the Arduino:
+## Features
 
-```
-VCC to 5V on the Arduino.
-GND to GND on the Arduino.
-SCL to A5 on the Arduino (or the appropriate I2C clock pin on your specific Arduino model).
-SDA to A4 on the Arduino (or the appropriate I2C data pin on your specific Arduino model).
-```
+*   **Tilt Control:** Accurately maps accelerometer readings to joystick X and Y axes for controlling the tilt/nudge mechanism in pinball simulations.
+*   **Adjustable Sensitivity:** Easily fine-tune the sensitivity of the tilt control using the `ACCEL_TILT_SENSITIVITY` constant in the code, allowing you to customize the responsiveness to your preference.
+*   **Customizable Mapping:** Employs a custom mapping function (`customMap()`) with a cubic curve for finer control over the joystick output, especially for subtle movements.
+*   **Joystick Scaling:** Includes a `JOYSTICK_SCALING_FACTOR` constant, to provide an additional layer of control over the joystick output, independent of the sensitivity.
+*   **Calibration:** Includes a calibration routine to compensate for sensor offsets, ensuring the joystick is centered when the device is level.
+*   **VPX/Future Pinball Compatibility:** Designed to work seamlessly with virtual pinball software that supports joystick input for tilt/nudge.
 
-This script uses 4g as it should cover the best sensitivity to range for tilt and bumping
+## Hardware Requirements
 
-```
+*   **Arduino Board:** An Arduino Leonardo, Pro Micro, or any other ATmega32U4-based board is required. These boards have built-in USB HID capabilities, allowing them to act as a joystick.
+*   **Accelerometer:** An MPU-6050 6-axis accelerometer and gyroscope module. The code is specifically written for the MPU-6050 but could be adapted for other accelerometers.
+*   **GY-87 Module (Optional):** The GY-87 module is a convenient breakout board that includes the MPU-6050, HMC5883L magnetometer, and BMP180 barometer. While the magnetometer is not used in this code, the GY-87 can still be used as a carrier for the MPU-6050.
+
+## Software Requirements
+
+*   **Arduino IDE:** To compile and upload the code to your Arduino.
+*   **Joystick Library:** The Arduino Joystick library by Matthew Heironimus. Install it through the Arduino IDE Library Manager (*Sketch -> Include Library -> Manage Libraries...*).
+*   **Adafruit MPU6050 Library:** Install it through the Arduino IDE Library Manager.
+*   **Adafruit Sensor Library:** Install it through the Arduino IDE Library Manager.
+*   **Virtual Pinball Software:** VPX, Future Pinball, or any other pinball software that supports joystick input for tilt/nudge.
+
+## Code Description
+
+The code is written in C++ for the Arduino platform. Here's a breakdown of the main sections:
+
+### Includes
+
+```c++
+#include <Joystick.h>
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
-#include <Joystick.h>
-
-Adafruit_MPU6050 mpu;
-
-Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID, 
-  JOYSTICK_TYPE_JOYSTICK, 0, 0,
-  true, true, true,     // X, Y, Z Axis
-  true, true, true,     // Rx, Ry, Rz
-  false, false,         // rudder, throttle
-  false, false, false); // accelerator, brake, steering
-
-void setup() {
-    Serial.begin(115200);
-    while (!Serial) delay(10);
-
-    Wire.begin();
-
-    Serial.println("Initializing MPU6050...");
-    if (!mpu.begin()) {
-        Serial.println("Failed to find MPU6050 chip. Please check connections.");
-        while (1) {
-            delay(10);
-        }
-    }
-    Serial.println("MPU6050 Found!");
-
-    // Set accelerometer and gyro range
-    mpu.setAccelerometerRange(MPU6050_RANGE_4_G);
-    mpu.setGyroRange(MPU6050_RANGE_250_DEG);
-
-    // Initialize Joystick
-    Joystick.begin();
-    Joystick.setXAxisRange(-1023, 1023);
-    Joystick.setYAxisRange(-1023, 1023);
-    Joystick.setZAxisRange(-1023, 1023);
-    Joystick.setRxAxisRange(-1023, 1023);
-    Joystick.setRyAxisRange(-1023, 1023);
-    Joystick.setRzAxisRange(-1023, 1023);
-}
-
-void loop() {
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
-
-    // Print raw accelerometer and gyroscope values for debugging
-    Serial.print("Raw Accel X: "); Serial.print(a.acceleration.x);
-    Serial.print(" Y: "); Serial.print(a.acceleration.y);
-    Serial.print(" Z: "); Serial.print(a.acceleration.z);
-    Serial.print(" | Raw Gyro X: "); Serial.print(g.gyro.x);
-    Serial.print(" Y: "); Serial.print(g.gyro.y);
-    Serial.print(" Z: "); Serial.println(g.gyro.z);
-
-    // Map accelerometer values to joystick ranges
-    int16_t x = map(constrain(a.acceleration.x * 8192, -32768, 32767), -32768, 32767, -1023, 1023);
-    int16_t y = map(constrain(a.acceleration.y * 8192, -32768, 32767), -32768, 32767, -1023, 1023);
-    int16_t z = map(constrain(a.acceleration.z * 8192, -32768, 32767), -32768, 32767, -1023, 1023);
-
-    // Map gyroscope values to joystick ranges
-    int16_t rx = map(constrain(g.gyro.x * 131, -32768, 32767), -32768, 32767, -1023, 1023);
-    int16_t ry = map(constrain(g.gyro.y * 131, -32768, 32767), -32768, 32767, -1023, 1023);
-    int16_t rz = map(constrain(g.gyro.z * 131, -32768, 32767), -32768, 32767, -1023, 1023);
-
-    // Set joystick axes
-    Joystick.setXAxis(x);
-    Joystick.setYAxis(y);
-    Joystick.setZAxis(z);
-    Joystick.setRxAxis(rx);
-    Joystick.setRyAxis(ry);
-    Joystick.setRzAxis(rz);
-
-    Joystick.sendState();
-
-    // Print mapped values for debugging
-    Serial.print("Mapped Accel X: "); Serial.print(x);
-    Serial.print(" Y: "); Serial.print(y);
-    Serial.print(" Z: "); Serial.print(z);
-    Serial.print(" | Mapped Gyro X: "); Serial.print(rx);
-    Serial.print(" Y: "); Serial.print(ry);
-    Serial.print(" Z: "); Serial.println(rz);
-
-    delay(500);
-}
-```
-
- Configure the Joystick in Windows
-Open the Game Controllers Settings:
-
-Press Win + R to open the Run dialog.
-Type joy.cpl and press Enter.
-Verify the Joystick:
-
-In the Game Controllers window, you should see the Arduino listed as a joystick.
-Select it and click Properties.
-Test the Joystick:
-
-In the Test tab, you can see the axes and buttons.
-Move the MPU6050 to see the corresponding axes move in the Properties window. This verifies that the joystick is working correctly.
-
-==========================================================================================================================================
-
-The MPU6050 accelerometer can measure acceleration in different ranges: ±2g, ±4g, ±8g, and ±16g. These ranges represent the maximum acceleration values the sensor can measure in each axis (X, Y, Z) in terms of gravitational acceleration (g). Here's a breakdown of the differences and their impact on the readings:
-
-Range Selection:
-
-2g: The sensor can measure accelerations from -2g to +2g.
-4g: The sensor can measure accelerations from -4g to +4g.
-8g: The sensor can measure accelerations from -8g to +8g.
-16g: The sensor can measure accelerations from -16g to +16g.
-Resolution and Sensitivity:
-
-The resolution (or sensitivity) of the accelerometer is determined by the range selected. Lower ranges (like 2g) provide higher sensitivity and finer resolution, meaning small changes in acceleration are more noticeable. Higher ranges (like 16g) provide lower sensitivity and coarser resolution, meaning the sensor can measure larger accelerations but with less detail in smaller changes.
-For example, in the 2g range, the sensor can detect smaller movements and vibrations with higher precision. In the 16g range, the sensor can measure more significant accelerations, which might be useful in high-impact scenarios but with less detail for small changes.
-Mapping to Joystick Range:
-
-When mapping the sensor's raw data to a joystick's range, the factor used in the map function changes depending on the selected range.
-In the code provided, this factor helps convert the sensor's readings to a range suitable for the joystick inputs. The mapping factor ensures that the full range of the sensor's output is utilized correctly.
-Here are the specifics for each range:
-
-2g Range:
-
-Factor: 16384 (since 1g = 16384 LSBs (Least Significant Bits))
-Example: For a ±2g range, the raw accelerometer value of 1g will be 16384, and -1g will be -16384.
-High sensitivity, suitable for detecting small movements.
-8g Range:
-
-Factor: 4096 (since 1g = 4096 LSBs)
-Example: For a ±8g range, the raw accelerometer value of 1g will be 4096, and -1g will be -4096.
-Moderate sensitivity, suitable for more significant movements but still maintaining a good level of detail.
-16g Range:
-
-Factor: 2048 (since 1g = 2048 LSBs)
-Example: For a ±16g range, the raw accelerometer value of 1g will be 2048, and -1g will be -2048.
-Lower sensitivity, suitable for detecting very high accelerations but with less detail on small changes.
