@@ -10,28 +10,33 @@
 Adafruit_MPU6050 mpu;
 
 // --- Calibration Data (Accelerometer) ---
-int16_t accelXCalibOffset = -432;  // Replace with your averaged calibration value
-int16_t accelYCalibOffset = -2995; // Replace with your averaged calibration value
+int16_t accelXCalibOffset = 0; // Initialize to 0, calibration will set this
+int16_t accelYCalibOffset = 0; // Initialize to 0, calibration will set this
+float accelXZeroG = 0;
+float accelYZeroG = 0;
 
 // --- Constants ---
-#define ACCEL_READ_DELAY_MS 5      // Delay between accelerometer readings (adjust as needed)
-#define ACCEL_TILT_SENSITIVITY 4.0f // Initial sensitivity (adjust as needed)
-#define JOYSTICK_SCALING_FACTOR 0.4f  // Scaling factor for joystick output (adjust as needed)
+#define ACCEL_READ_DELAY_MS 5      // Delay between accelerometer readings
+#define ACCEL_TILT_SENSITIVITY 2.0f // Adjust this for overall sensitivity (lower = more sensitive)
+#define JOYSTICK_SCALING_FACTOR 1.0f // Scaling factor for joystick output (0.0-1.0)
+#define DEADZONE 0.1f // Deadzone for the accelerometer readings
 
 // --- Global Variables ---
 float rawAccelX, rawAccelY, rawAccelZ; // Raw accelerometer values
+float filteredAccelX, filteredAccelY;
 
 // --- Joystick ---
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID, JOYSTICK_TYPE_GAMEPAD,
-                 0, 0,                  // 0 buttons, no hat switch
-                 true, true, false, false, false, false, // X and Y axes enabled
-                 false, false, false, false, false);
+                  0, 0, // 0 buttons, no hat switch
+                  true, true, false, false, false, false, // X and Y axes enabled
+                  false, false, false, false, false);
 
 // --- Function Prototypes ---
 void calibrateAccelerometer();
 void readAccelerometer();
 void handleTilt();
 float customMap(float x, float in_min, float in_max, float out_min, float out_max);
+float lowPassFilter(float newValue, float previousValue, float alpha);
 
 void setup() {
   Serial.begin(115200);
@@ -40,7 +45,7 @@ void setup() {
   // Initialize MPU6050
   if (mpu.begin(MPU6050_ADDRESS)) {
     Serial.println("MPU6050 Found!");
-    mpu.setAccelerometerRange(MPU6050_RANGE_4_G); // Set accelerometer range to 4G
+    mpu.setAccelerometerRange(MPU6050_RANGE_4_G);
     mpu.setGyroRange(MPU6050_RANGE_500_DEG);
     mpu.setFilterBandwidth(MPU6050_BAND_44_HZ);
 
@@ -48,7 +53,7 @@ void setup() {
     calibrateAccelerometer();
   } else {
     Serial.println("MPU6050 Not Found!");
-    while (1); // Stop if MPU6050 not found
+    while (1);
   }
 
   // Initialize Joystick
@@ -67,27 +72,27 @@ void loop() {
 // --- Calibration Function ---
 void calibrateAccelerometer() {
   Serial.println("Calibrating accelerometer... Keep the device still.");
-  delay(1000);
+  delay(3000); // Give more time to stabilize
 
-  long sumX = 0;
-  long sumY = 0;
-  const int calibrationSamples = 100;
+  const int calibrationSamples = 500; // Increase samples for better accuracy
+  float sumX = 0;
+  float sumY = 0;
 
   for (int i = 0; i < calibrationSamples; i++) {
     sensors_event_t accel, gyro, temp;
     mpu.getEvent(&accel, &gyro, &temp);
     sumX += accel.acceleration.x;
     sumY += accel.acceleration.y;
-    delay(ACCEL_READ_DELAY_MS);
+    delay(5);
   }
 
-  accelXCalibOffset = -(sumX / calibrationSamples);
-  accelYCalibOffset = -(sumY / calibrationSamples);
+  accelXZeroG = sumX / calibrationSamples;
+  accelYZeroG = sumY / calibrationSamples;
 
-  Serial.print("Calibration complete. Offsets: X=");
-  Serial.print(accelXCalibOffset);
+  Serial.print("Calibration complete. Zero G: X=");
+  Serial.print(accelXZeroG);
   Serial.print(", Y=");
-  Serial.println(accelYCalibOffset);
+  Serial.println(accelYZeroG);
 }
 
 // --- Sensor Reading Function ---
@@ -95,27 +100,34 @@ void readAccelerometer() {
   sensors_event_t accel, gyro, temp;
   mpu.getEvent(&accel, &gyro, &temp);
 
-  // Apply calibration offsets
-  rawAccelX = accel.acceleration.x + accelXCalibOffset;
-  rawAccelY = accel.acceleration.y + accelYCalibOffset;
+  rawAccelX = accel.acceleration.x - accelXZeroG;
+  rawAccelY = accel.acceleration.y - accelYZeroG;
   rawAccelZ = accel.acceleration.z;
+
+  // Apply Low-Pass Filter
+  float alpha = 0.2; // Adjust for smoothing (0.0-1.0, lower = more smoothing)
+  filteredAccelX = lowPassFilter(rawAccelX, filteredAccelX, alpha);
+  filteredAccelY = lowPassFilter(rawAccelY, filteredAccelY, alpha);
 }
 
 // --- Tilt Handling ---
 void handleTilt() {
-  // Map accelerometer values to joystick axis values
-  float joystickX = rawAccelX / ACCEL_TILT_SENSITIVITY;
-  float joystickY = rawAccelY / ACCEL_TILT_SENSITIVITY;
+  float joystickX = filteredAccelX / ACCEL_TILT_SENSITIVITY;
+  float joystickY = filteredAccelY / ACCEL_TILT_SENSITIVITY;
+
+    // Apply Deadzone
+  if (abs(joystickX) < DEADZONE) joystickX = 0;
+  if (abs(joystickY) < DEADZONE) joystickY = 0;
 
   // Apply custom mapping for finer control
   joystickX = customMap(joystickX, -1, 1, -1023, 1023);
   joystickY = customMap(joystickY, -1, 1, -1023, 1023);
-  
+
   // Scale down joystick values
   joystickX = joystickX * JOYSTICK_SCALING_FACTOR;
   joystickY = joystickY * JOYSTICK_SCALING_FACTOR;
 
-  // Invert Y-axis (if needed)
+  // Invert Y-axis (if needed) - Often needed for pinball
   joystickY = -joystickY;
 
   // Clamp joystick values to the valid range
@@ -129,32 +141,26 @@ void handleTilt() {
   // Send joystick report
   Joystick.sendState();
 
-  // Print raw accelerometer values and joystick values (for debugging)
-  Serial.print("Raw Accel X: ");
-  Serial.println(rawAccelX);
-  Serial.print("Raw Accel Y: ");
-  Serial.println(rawAccelY);
-  Serial.print("Joystick X: ");
-  Serial.println(joystickX);
-  Serial.print("Joystick Y: ");
-  Serial.println(joystickY);
+  // Serial output for debugging
+  Serial.print("Raw Accel X: "); Serial.print(rawAccelX); Serial.print(" Filtered X: "); Serial.print(filteredAccelX);
+  Serial.print(" Raw Accel Y: "); Serial.print(rawAccelY); Serial.print(" Filtered Y: "); Serial.print(filteredAccelY);
+  Serial.print(" Joystick X: "); Serial.print(joystickX); Serial.print(" Joystick Y: "); Serial.println(joystickY);
 }
 
-// --- Custom Mapping Function ---
+// --- Custom Mapping Function --- (unchanged)
 float customMap(float x, float in_min, float in_max, float out_min, float out_max) {
-  // Clamp input within the input range
   x = constrain(x, in_min, in_max);
-
-  // Use a non-linear mapping (e.g., cubic) for finer control near the center
-  float normalized = (x - in_min) / (in_max - in_min); // Normalize to 0-1 range
+  float normalized = (x - in_min) / (in_max - in_min);
   float mapped;
-
   if (normalized >= 0) {
-    mapped = pow(normalized, 3); // Cubic mapping for positive values
+    mapped = pow(normalized, 3);
   } else {
-    mapped = -pow(-normalized, 3); // Cubic mapping for negative values
+    mapped = -pow(-normalized, 3);
   }
-
-  // Scale to the output range
   return out_min + mapped * (out_max - out_min);
+}
+
+// --- Low-Pass Filter Function ---
+float lowPassFilter(float newValue, float previousValue, float alpha) {
+  return previousValue + alpha * (newValue - previousValue);
 }
